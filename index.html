@@ -3,59 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Проверка геолокации</title>
+    <title>Карта геолокации</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Подключаем библиотеку картой (Leaflet CSS) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0; padding: 15px;
             background-color: var(--tg-theme-bg-color, #ffffff);
             color: var(--tg-theme-text-color, #000000);
             text-align: center;
-            padding: 40px 20px;
-            margin: 0;
         }
-        .container { max-width: 400px; margin: 0 auto; }
+        #map {
+            height: 320px;
+            width: 100%;
+            border-radius: 14px;
+            margin-bottom: 15px;
+            border: 2px solid var(--tg-theme-hint-color, #ccc);
+        }
         button {
             background-color: var(--tg-theme-button-color, #2481cc);
             color: var(--tg-theme-button-text-color, #ffffff);
-            border: none; padding: 14px 28px; font-size: 16px; font-weight: 600;
-            border-radius: 12px; cursor: pointer; width: 100%; margin-top: 20px;
+            border: none; padding: 14px; font-size: 16px; font-weight: 600;
+            border-radius: 12px; cursor: pointer; width: 100%;
         }
-        p { font-size: 15px; color: #707579; line-height: 1.4; }
+        #status { font-size: 14px; color: #707579; margin-bottom: 15px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>📍 Подтверждение присутствия</h2>
-        <p id="status">Нажмите кнопку ниже, чтобы система определила ваши точные GPS-координаты.</p>
-        <button onclick="requestGeo()">Определить местоположение</button>
-    </div>
 
+    <div id="map"></div>
+    <p id="status">🛰 Получаем ваши GPS-координаты...</p>
+    <button onclick="sendGeo()">Подтвердить местоположение</button>
+
+    <!-- Подключаем скрипт карты (Leaflet JS) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         let tg = window.Telegram.WebApp;
         tg.expand();
 
-        function requestGeo() {
-            document.getElementById('status').innerText = '🛰 Получаем GPS-координаты...';
-            
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    function(position) {
-                        const lat = position.coords.latitude;
-                        const lon = position.coords.longitude;
-                        
-                        document.getElementById('status').innerText = '✅ Координаты найдены! Передаем в систему...';
-                        tg.sendData(JSON.stringify({ lat: lat, lon: lon }));
-                    },
-                    function(error) {
-                        document.getElementById('status').innerText = '❌ Ошибка доступа к GPS.';
-                        alert('Пожалуйста, разрешите доступ к геолокации в настройках телефона.');
-                    },
-                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-                );
+        let map, marker;
+        let userLat = 0, userLon = 0;
+
+        // Инициализация карты
+        function initMap(lat, lon) {
+            if (!map) {
+                map = L.map('map').setView([lat, lon], 17);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                }).addTo(map);
+                marker = L.marker([lat, lon]).addTo(map).bindPopup("Вы здесь").openPopup();
             } else {
-                alert('Геолокация не поддерживается вашим устройством.');
+                map.setView([lat, lon], 17);
+                marker.setLatLng([lat, lon]);
             }
+        }
+
+        // Запрос геолокации при открытии
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    userLat = position.coords.latitude;
+                    userLon = position.coords.longitude;
+                    document.getElementById('status').innerText = '✅ Точка определена на карте. Нажмите кнопку ниже.';
+                    initMap(userLat, userLon);
+                },
+                function(error) {
+                    document.getElementById('status').innerText = '❌ Ошибка GPS. Разрешите доступ к геолокации в настройках телефона.';
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+        } else {
+            alert('Геолокация не поддерживается вашим устройством.');
+        }
+
+        function sendGeo() {
+            if (userLat === 0 && userLon === 0) {
+                alert('Ждем определение координат...');
+                return;
+            }
+            document.getElementById('status').innerText = '⏳ Отправка данных в бот...';
+            
+            // Передаем координаты в бот
+            tg.sendData(JSON.stringify({ lat: userLat, lon: userLon }));
+            
+            // Закрываем мини-апп через секунду
+            setTimeout(() => {
+                tg.close();
+            }, 1000);
         }
     </script>
 </body>
